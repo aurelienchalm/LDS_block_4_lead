@@ -1,0 +1,115 @@
+pipeline {
+    agent any
+
+    environment {
+        ENV_PATH = 'injected.env'
+        RECIPIENTS = 'aurelien.chalm@gmail.com'
+    }
+
+    stages {
+        stage('Préparer le .env') {
+            steps {
+                withCredentials([file(credentialsId: 'env_file', variable: 'REAL_ENV')]) {
+                    script {
+                        sh "rm -f $WORKSPACE/$ENV_PATH"
+                        def envContent = readFile("${REAL_ENV}")
+                        writeFile file: "$WORKSPACE/$ENV_PATH", text: envContent
+                    }
+                }
+            }
+        }
+
+        stage('Construire l’image de test') {
+            steps {
+                script {
+                    docker.build('housing-prices-prediction', '-f test/Dockerfile.predictEC2 . --no-cache')
+                }
+            }
+        }
+
+        stage('Exécuter les tests') {
+            steps {
+                script {
+                    docker.image('housing-prices-prediction').inside("--env-file $WORKSPACE/$ENV_PATH --user 1000") {
+                        sh 'PYTHONPATH=/app pytest test/test_predict.py --junitxml=test-reports/unit-tests.xml'
+                    }
+                }
+            }
+        }
+
+        stage('Smoke test API') {
+        steps {
+            script {
+            docker.image('housing-prices-prediction').inside("--env-file $WORKSPACE/$ENV_PATH -w $WORKSPACE") {
+                sh '''
+                set -eu
+                echo "🔎 Smoke test: /openapi.json"
+                CODE=$(curl -sS -o /dev/null -w "%{http_code}" "$API_HOST/openapi.json")
+                echo "HTTP $CODE"
+                test "$CODE" = "200"
+
+                echo "🔎 Smoke test: /docs"
+                CODE=$(curl -sS -o /dev/null -w "%{http_code}" "$API_HOST/docs")
+                echo "HTTP $CODE"
+                test "$CODE" = "200"
+
+                echo "✅ API up"
+                '''
+                    }
+                }
+            }
+        }
+
+
+
+        stage('Tagger la version validée') {
+            steps {
+                script {
+                    docker.image('housing-prices-prediction').inside("--env-file $WORKSPACE/$ENV_PATH") {
+                        sh 'python mlflow_code/set_model_tag.py'
+                    }
+                }
+            }
+        }
+    }
+    post {
+        always {
+            echo '📦 Pipeline terminé.'
+            junit 'test-reports/unit-tests.xml'
+        }
+        failure {
+            echo '❌ Le pipeline a échoué.'
+            emailext subject: "❌ FAILURE: Job ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+            body: """
+Bonjour collègue,
+
+Le job ${env.JOB_NAME} a échoué au build #${env.BUILD_NUMBER}.
+
+🔗 Voir les logs : ${env.BUILD_URL}console
+
+Il est temps d’investiguer !
+
+-- 
+Ton Jenkins préféré
+""",
+            to: "${env.RECIPIENTS}",
+            from: "aurelien.chalm@gmail.com"
+        }
+        success {
+            echo '✅ Le pipeline a réussi.'
+            emailext subject: "✅ SUCCESS: Job ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+            body: """
+Bonjour collègue,
+
+Le job ${env.JOB_NAME} a réussi avec le build #${env.BUILD_NUMBER}.
+
+🔗 Voir les logs : ${env.BUILD_URL}console
+
+Bien à toi,
+Ton Jenkins préféré
+""",
+            to: "${env.RECIPIENTS}",
+            from: "aurelien.chalm@gmail.com"
+        }
+    }
+}

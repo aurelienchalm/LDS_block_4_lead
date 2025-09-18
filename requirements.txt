@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+sqlalchemy
+psycopg2-binary
+python-dotenv
+pandas
+mlflow==2.13.0
+boto3
+streamlit>=1.30.0

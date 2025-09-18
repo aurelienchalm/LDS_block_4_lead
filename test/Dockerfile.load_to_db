@@ -1,0 +1,21 @@
+FROM python:3.10-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y gcc libpq-dev && rm -rf /var/lib/apt/lists/*
+
+# Ajout de PYTHONPATH
+ENV PYTHONPATH=/app
+
+COPY test/requirements.txt .
+COPY test/test_load_to_db.py test/
+COPY test/conftest.py test/
+COPY test/test_data.csv test/
+COPY src/ src/
+
+# Création avec permissions utilisateur non-root (user 1000 = Jenkins)
+RUN mkdir -p /app/test-reports && chown -R 1000:1000 /app/test-reports
+
+RUN pip install --upgrade pip && pip install -r requirements.txt
+
+CMD ["pytest", "test/test_load_to_db.py"]

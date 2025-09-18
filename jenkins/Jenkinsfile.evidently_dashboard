@@ -1,0 +1,105 @@
+pipeline {
+    agent any
+
+    environment {
+        ENV_PATH   = 'injected.env'
+        RECIPIENTS = 'aurelien.chalm@gmail.com'
+        IMAGE      = "evidently-dashboard-test:${env.BUILD_NUMBER}"
+    }
+
+    stages {
+
+        stage('Checkout') {
+        steps {
+            checkout scm
+        }
+        }
+
+        // ==== IDENTIQUE AU LOAD_TO_DB : on injecte le .env depuis un credential "Secret file" ====
+        stage('Préparer le .env') {
+        steps {
+            withCredentials([file(credentialsId: 'env_file', variable: 'REAL_ENV')]) {
+            script {
+                sh "rm -f $WORKSPACE/$ENV_PATH"
+                def envContent = readFile("${REAL_ENV}")
+                writeFile file: "$WORKSPACE/$ENV_PATH", text: envContent
+            }
+            }
+        }
+        }
+
+        stage('Build Docker image (tests Evidently)') {
+        steps {
+            sh """
+            docker build -f test/Dockerfile.evidently_dashboard -t ${IMAGE} .
+            """
+        }
+        }
+
+        stage('Run pytest (Evidently)') {
+        steps {
+            sh """
+            docker run --rm \
+                --env-file ${ENV_PATH} \
+                ${IMAGE}
+            """
+        }
+        }
+
+        stage('Run Evidently dashboard') {
+        steps {
+            sh """
+            docker run --rm \
+                --env-file ${ENV_PATH} \
+                -v "\$PWD":/app \
+                -w /app \
+                ${IMAGE} \
+                python evidently/evidently_dashboard.py
+            """
+        }
+        }
+
+        stage('Archive artifacts') {
+        steps {
+            archiveArtifacts artifacts: 'evidently/*.html,evidently/*.json', fingerprint: true
+        }
+        }
+    }
+
+    post {
+        success {
+        emailext(
+            subject: "✅ Evidently OK — ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+            to: "${env.RECIPIENTS}",
+            body: """
+    Bonjour collègue,
+
+    Le job ${env.JOB_NAME} a réussi avec le build #${env.BUILD_NUMBER}.
+
+    🔗 Voir les logs : ${env.BUILD_URL}console
+
+    Bien à toi,
+    Ton Jenkins préféré
+    """,
+            from: "aurelien.chalm@gmail.com"
+        )
+        }
+        failure {
+        emailext(
+            subject: "❌ Evidently FAIL — ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+            to: "${env.RECIPIENTS}",
+            body: """
+    Bonjour collègue,
+
+    Le job ${env.JOB_NAME} a échoué (build #${env.BUILD_NUMBER}).
+
+    🔗 Voir les logs : ${env.BUILD_URL}console
+
+    Bien à toi,
+    Ton Jenkins préféré
+    """,
+            from: "aurelien.chalm@gmail.com"
+        )
+        }
+    }
+}

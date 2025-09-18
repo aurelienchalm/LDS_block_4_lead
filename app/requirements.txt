@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+sqlalchemy
+pandas
+psycopg2-binary
+scikit-learn
+python-dotenv
+mlflow==2.13.0
+boto3

@@ -1,0 +1,178 @@
+from airflow import DAG
+from airflow.operators.python import PythonOperator
+from airflow.operators.email import EmailOperator
+from airflow.hooks.base import BaseHook
+from airflow.models import Variable
+
+from airflow.providers.postgres.hooks.postgres import PostgresHook
+from airflow.providers.amazon.aws.hooks.s3 import S3Hook
+
+from datetime import datetime, timedelta
+from io import StringIO
+import requests
+import time
+
+
+# === Config ===
+AWS_CONN_ID = "aws_default"
+POSTGRES_CONN_ID = "neondb"
+
+# Airflow Variables (already set in your env, per your message)
+TRAINING_CSV_BUCKET = Variable.get("TRAINING_CSV_BUCKET")
+POSTGRES_TABLE = Variable.get("POSTGRES_TABLE", default_var="housing_prices")
+DATE_COLUMN = Variable.get("DATE_COLUMN", default_var="date_creation")
+
+default_args = {
+    "owner": "aurelien",
+    "retries": 0,
+    "retry_delay": timedelta(minutes=1),
+}
+
+def send_failure_email(context):
+    task_instance = context.get('task_instance')
+    dag_id = context.get('dag').dag_id
+    task_id = task_instance.task_id
+    log_url = task_instance.log_url
+
+    subject = f"❌ ECHEC du DAG {dag_id} - tâche {task_id}"
+    body = f"""
+    Le DAG <b>{dag_id}</b> a échoué sur la tâche <b>{task_id}</b>.<br>
+    <a href="{log_url}">Voir les logs Airflow</a>
+    """
+    send_email = EmailOperator(
+        task_id='send_email_on_failure_inner',
+        to=Variable.get("ALERT_RECIPIENTS", default_var="aurelien.chalm@gmail.com"),
+        subject=subject,
+        html_content=body
+    )
+    return send_email.execute(context=context)
+
+def generate_current_data_csv(**context):
+    """
+    Query NeonDB for the last 2 years and upload current_data.csv to S3:
+    s3://{TRAINING_CSV_BUCKET}/current_data/current_data.csv
+    """
+    sql = f"""
+        SELECT *
+        FROM {POSTGRES_TABLE}
+        WHERE {DATE_COLUMN} >= (CURRENT_DATE - INTERVAL '2 years')
+    """
+    pg = PostgresHook(postgres_conn_id=POSTGRES_CONN_ID)
+    df = pg.get_pandas_df(sql)
+
+    if df.empty:
+        raise Exception("Aucune donnée renvoyée pour les 2 dernières années. Vérifie POSTGRES_TABLE/DATE_COLUMN.")
+
+    # Convert to CSV string
+    csv_buf = StringIO()
+    df.to_csv(csv_buf, index=False)
+    csv_str = csv_buf.getvalue()
+
+    # Upload to S3
+    s3 = S3Hook(aws_conn_id=AWS_CONN_ID)
+    key = "current_data/current_data.csv"
+    s3.load_string(string_data=csv_str, key=key, bucket_name=TRAINING_CSV_BUCKET, replace=True)
+
+    s3_uri = f"s3://{TRAINING_CSV_BUCKET}/{key}"
+    context["ti"].xcom_push(key="current_data_s3_uri", value=s3_uri)
+    print(f"✅ current_data.csv uploadé: {s3_uri}")
+
+def _get_jenkins_crumb(host, auth):
+    try:
+        resp = requests.get(f"{host}/crumbIssuer/api/json", auth=auth, timeout=10)
+        if resp.status_code == 200:
+            data = resp.json()
+            return {data["crumbRequestField"]: data["crumb"]}
+    except Exception:
+        pass
+    return {}
+
+def trigger_jenkins_job(**context):
+    conn = BaseHook.get_connection("jenkins_api")
+    username = conn.login
+    password = conn.password
+
+    # Obtenir le crumb pour les headers
+    crumb_resp = requests.get(
+        f"{conn.host}/crumbIssuer/api/json",
+        auth=(username, password)
+    )
+    crumb_resp.raise_for_status()
+    crumb_data = crumb_resp.json()
+    headers = {
+        crumb_data["crumbRequestField"]: crumb_data["crumb"],
+        "Content-Type": "application/json",
+    }
+
+    # Lancer le job Jenkins
+    build_resp = requests.post(
+        f"{conn.host}/job/test_evidently_dashboard/build",
+        auth=(username, password),
+        headers=headers
+    )
+
+    if build_resp.status_code != 201:
+        raise Exception(f"❌ Erreur lors du déclenchement du job : {build_resp.status_code}")
+
+    queue_url = build_resp.headers.get("Location")
+    if not queue_url:
+        raise Exception("❌ Impossible de récupérer l’URL de queue Jenkins")
+
+    # Attendre que Jenkins attribue un numéro de build
+    build_number = None
+    for _ in range(30):  # 30 x 2s = 60s max
+        queue_resp = requests.get(f"{queue_url}api/json", auth=(username, password))
+        queue_data = queue_resp.json()
+        if 'executable' in queue_data and 'number' in queue_data['executable']:
+            build_number = queue_data['executable']['number']
+            break
+        time.sleep(3)
+
+    if build_number is None:
+        raise Exception("❌ Timeout : le job Jenkins n'a pas démarré")
+
+    print(f"🔄 Build #{build_number} en cours...")
+
+    # Polling du statut du build
+    for _ in range(60):  # 60 x 5s = 5 min max
+        build_info_resp = requests.get(
+            f"{conn.host}/job/test_evidently_dashboard/{build_number}/api/json",
+            auth=(username, password)
+        )
+        build_info = build_info_resp.json()
+        if not build_info["building"]:
+            result = build_info["result"]
+            jenkins_url = f"{conn.host}/job/test_evidently_dashboard/{build_number}/"
+
+            print(f"✅ Résultat du build Jenkins : {result}")
+            print(f"🔗 Voir le build sur Jenkins : {jenkins_url}")
+
+            if result != "SUCCESS":
+                raise Exception(f"❌ Le job Jenkins a échoué : {result}")
+            break
+        time.sleep(5)
+
+    return f"✔️ Build #{build_number} terminé avec succès"
+
+
+with DAG(
+    dag_id="housing_evidently_dashboard",
+    default_args=default_args,
+    start_date=datetime(2025, 7, 29),
+    schedule_interval=None,
+    catchup=False,
+    tags=["jenkins", "trigger", "evidently", "neondb", "s3"],
+    on_failure_callback=send_failure_email,
+) as dag:
+
+    generate_current_data = PythonOperator(
+        task_id="generate_current_data_csv",
+        python_callable=generate_current_data_csv,
+    )
+
+    trigger_jenkins_build = PythonOperator(
+        task_id="trigger_jenkins_evidently_dashboard_build",
+        python_callable=trigger_jenkins_job,
+    )
+
+    generate_current_data >> trigger_jenkins_build

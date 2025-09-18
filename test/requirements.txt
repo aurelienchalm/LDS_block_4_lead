@@ -1,0 +1,11 @@
+pytest
+python-dotenv
+boto3
+pandas
+sqlalchemy
+psycopg2-binary
+mlflow==2.13.0
+scikit-learn
+httpx>=0.24
+fastapi==0.111.0
+evidently==0.6.*

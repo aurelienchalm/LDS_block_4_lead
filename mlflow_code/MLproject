@@ -1,0 +1,9 @@
+name: housing-prices-estimator
+
+entry_points:
+  main:
+    parameters:
+      n_estimators: {type: int, default: 100}
+      min_samples_split: {type: int, default: 2}
+    command: >
+      python train.py --n_estimators {n_estimators} --min_samples_split {min_samples_split}

@@ -1,0 +1,24 @@
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Installation des dépendances système nécessaires
+RUN apt-get update && apt-get install -y gcc libpq-dev && rm -rf /var/lib/apt/lists/*
+
+# Ajout de PYTHONPATH pour faciliter les imports
+ENV PYTHONPATH=/app
+
+# Copie des fichiers nécessaires
+COPY test/requirements.txt .
+COPY test/test_evidently_dashboard.py test/
+COPY evidently/ evidently/
+COPY src/ src/
+
+# Répertoire pour les rapports pytest (lisible par Jenkins user 1000)
+RUN mkdir -p /app/test-reports && chown -R 1000:1000 /app/test-reports
+
+# Installation des dépendances Python
+RUN pip install --upgrade pip && pip install -r requirements.txt
+
+# Commande par défaut : exécuter uniquement les tests Evidently
+CMD ["pytest", "test/test_evidently_dashboard.py", "--maxfail=1", "--disable-warnings", "-q"]

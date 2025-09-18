@@ -1,0 +1,24 @@
+FROM python:3.10-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y gcc libpq-dev git && rm -rf /var/lib/apt/lists/*
+
+# Créer dossier test-reports avec bons droits
+RUN mkdir -p /app/test-reports
+
+COPY test/requirements.txt .
+COPY test/test_train.py test/
+COPY test/conftest.py test/
+COPY mlflow_code/ mlflow_code/
+
+# Création avec permissions utilisateur non-root (user 1000 = Jenkins)
+RUN mkdir -p /app/test-reports && chown -R 1000:1000 /app/test-reports
+
+#INSTALLER MLflow AVEC EXTRAS
+RUN pip install --upgrade pip && \
+    pip install "mlflow[extras]==2.13.0" && \
+    pip install -r requirements.txt && \
+    pip install scikit-learn pandas cloudpickle numpy
+
+CMD ["pytest", "test/test_train.py"]

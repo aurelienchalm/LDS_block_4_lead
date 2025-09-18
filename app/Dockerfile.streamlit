@@ -1,0 +1,19 @@
+# Dockerfile dans app/
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Copier les dépendances
+COPY requirements_streamlit.txt ./
+
+# Installer les dépendances
+RUN pip install --upgrade pip && pip install -r requirements_streamlit.txt
+
+# Copier le reste du code
+COPY . .
+
+# Exposer le port utilisé par Streamlit
+EXPOSE 8501
+
+# Lancer l'app utilisateur.py
+CMD ["streamlit", "run", "utilisateur.py", "--server.port=8501", "--server.address=0.0.0.0"]

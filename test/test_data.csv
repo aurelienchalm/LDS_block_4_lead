@@ -1,0 +1,2 @@
+square_feet,num_bedrooms,num_bathrooms,num_floors,year_built,has_garden,has_pool,garage_size,location_score,distance_to_center,price,price_predict
+90.5,2,1,1,1999,1,0,1,6.5,4.0,180000,185000

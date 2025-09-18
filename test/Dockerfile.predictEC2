@@ -1,0 +1,32 @@
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Dépendances système
+RUN apt-get update && apt-get install -y gcc libpq-dev git curl && rm -rf /var/lib/apt/lists/*
+
+# 🔹 Copie du .env depuis le parent (../)
+#COPY ../.env /app/.env
+
+# 🔹 Copie du code
+COPY test/requirements.txt .
+COPY test/test_predict.py test/
+COPY ../app/ app/
+
+# 🔹 Création dossier de rapports
+RUN mkdir -p /app/test-reports && chown -R 1000:1000 /app/test-reports
+
+# 🔹 Installation des dépendances
+RUN pip install --upgrade pip && \
+    pip install -r requirements.txt && \
+    pip install \
+        "mlflow[extras]==2.13.0" \
+        scikit-learn \
+        pandas \
+        cloudpickle \
+        numpy \
+        "fastapi==0.111.0" \
+        "httpx>=0.24.0"
+
+# 🔹 Commande de test
+CMD ["sh", "-c", "PYTHONPATH=/app pytest --junitxml=test-reports/unit-tests.xml test/test_predict.py"]
