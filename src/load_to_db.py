@@ -85,7 +85,7 @@ def create_table_if_not_exists(engine, metadata, table):
     if table_name not in metadata.tables:
         logger.info(f"Table '{table_name}' absente → création…")
         metadata.create_all(engine)
-        logger.info("Table créée ✅")
+        logger.info("Table créée")
     else:
         logger.info(f"Table '{table_name}' déjà existante.")
 
@@ -110,7 +110,7 @@ def insert_data(df: pd.DataFrame, table, engine):
         stmt = insert(table).values(records)
         session.execute(stmt)
         session.commit()
-    logger.info("Insertion réussie ✅")
+    logger.info("Insertion réussie")
 
 def main():
     try:
@@ -125,14 +125,14 @@ def main():
         df = fetch_csv_from_s3()
         insert_data(df, table, engine)
 
-        logger.info("Terminé sans erreur 🎉")
+        logger.info("Terminé sans erreur")
 
     except Exception as e:
         # Log stack complète dans le fichier et la console
         logger.exception("Erreur lors de l'exécution du script")
         # Petit hint fréquent pour Neon/Postgres:
         logger.error(
-            "Vérifie aussi ta chaîne POSTGRES_DATABASE (driver, host, port, sslmode). "
+            "Vérif POSTGRES_DATABASE (driver, host, port, sslmode). "
             "Ex: postgresql+psycopg://user:pass@host/db?sslmode=require"
         )
         raise  # laisse le code d'erreur remonter (utile en CI)
