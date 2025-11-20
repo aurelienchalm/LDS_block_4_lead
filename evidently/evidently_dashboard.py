@@ -41,7 +41,7 @@ AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
 AWS_DEFAULT_REGION    = os.getenv("AWS_DEFAULT_REGION")
 BUCKET_NAME           = os.getenv("BUCKET_NAME")  # ex: housing-prices-aurelien
 
-# Clés par défaut dans le bucket (tu peux les changer ici si tu mets des sous-dossiers)
+# Clés par défaut dans le bucket 
 
 REF_KEY = "current_data/current_data.csv"
 CUR_KEY = "real_estate_dataset.csv"
