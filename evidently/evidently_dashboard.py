@@ -197,6 +197,17 @@ def main():
     cur = cur[common_cols]
     logger.info(f"Colonnes communes: {len(common_cols)} → {common_cols}")
 
+    #PATCH : si price_predict est entièrement vide dans le ref, on la retire pour Evidently
+    for col in ["price_predict"]:
+        if col in ref.columns and ref[col].isna().all():
+            logger.info(f"Colonne {col} vide dans le dataset de référence → suppression pour le drift.")
+            ref = ref.drop(columns=[col])
+            if col in cur.columns:
+                cur = cur.drop(columns=[col])
+
+    # (re-log les colonnes après nettoyage)
+    logger.info(f"Colonnes après nettoyage: ref={list(ref.columns)}, cur={list(cur.columns)}")
+
     cm = build_column_mapping(ref)
     tests, report = run_tests_and_report(ref, cur, cm)
 

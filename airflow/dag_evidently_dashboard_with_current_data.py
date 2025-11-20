@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from io import StringIO
 import requests
 import time
+import pandas as pd
 
 
 # === Config ===
@@ -21,6 +22,7 @@ POSTGRES_CONN_ID = "neondb"
 TRAINING_CSV_BUCKET = Variable.get("TRAINING_CSV_BUCKET")
 POSTGRES_TABLE = Variable.get("POSTGRES_TABLE", default_var="housing_prices")
 DATE_COLUMN = Variable.get("DATE_COLUMN", default_var="date_creation")
+REAL_ESTATE_API_URL = Variable.get("REAL_ESTATE_API_URL")
 
 default_args = {
     "owner": "aurelien",
@@ -55,7 +57,7 @@ def generate_current_data_csv(**context):
     sql = f"""
         SELECT *
         FROM {POSTGRES_TABLE}
-        WHERE {DATE_COLUMN} >= (CURRENT_DATE - INTERVAL '2 years')
+        WHERE {DATE_COLUMN} >= (CURRENT_DATE - INTERVAL '2 years') and price IS NOT NULL AND price_predict IS NULL
     """
     pg = PostgresHook(postgres_conn_id=POSTGRES_CONN_ID)
     df = pg.get_pandas_df(sql)
@@ -76,6 +78,74 @@ def generate_current_data_csv(**context):
     s3_uri = f"s3://{TRAINING_CSV_BUCKET}/{key}"
     context["ti"].xcom_push(key="current_data_s3_uri", value=s3_uri)
     print(f"✅ current_data.csv uploadé: {s3_uri}")
+    
+def generate_real_estate_dataset_csv(**context):
+    max_attempts = 3
+    last_exc = None
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            print(f"[DEBUG] Tentative {attempt}/{max_attempts} appel API {REAL_ESTATE_API_URL}")
+            resp = requests.get(REAL_ESTATE_API_URL, timeout=30)
+            print(f"[DEBUG] Status code API = {resp.status_code}")
+            print(f"[DEBUG] Response text (début) = {resp.text[:500]}")
+            resp.raise_for_status()
+            break  # ✅ on sort de la boucle si tout va bien
+        except Exception as e:
+            last_exc = e
+            print(f"[WARN] Erreur appel API (tentative {attempt}): {e}")
+            if attempt < max_attempts:
+                time.sleep(5)  # on attend 5s avant de réessayer
+            else:
+                raise Exception(
+                    f"❌ Erreur lors de l'appel à l'API des ventes réelles après {max_attempts} tentatives : {last_exc}"
+                )
+
+    data = resp.json()
+    if not data:
+        raise Exception("❌ Aucune donnée renvoyée par l'API des ventes réelles.")
+
+    # data = liste de dict → DataFrame
+    df = pd.DataFrame(data)
+
+    # Si tu veux t'assurer de l'ordre des colonnes, tu peux expliciter :
+    expected_cols = [
+        "id",
+        "square_feet",
+        "num_bedrooms",
+        "num_bathrooms",
+        "num_floors",
+        "year_built",
+        "has_garden",
+        "has_pool",
+        "garage_size",
+        "location_score",
+        "distance_to_center",
+        "price",
+        "price_predict",
+        "date_creation",
+    ]
+    # On garde uniquement celles qui existent, dans cet ordre
+    df = df[[c for c in expected_cols if c in df.columns]]
+
+    # Conversion en CSV
+    csv_buf = StringIO()
+    df.to_csv(csv_buf, index=False)
+    csv_str = csv_buf.getvalue()
+
+    # Upload sur S3
+    s3 = S3Hook(aws_conn_id=AWS_CONN_ID)
+    key = "real_estate_dataset.csv"
+    s3.load_string(
+        string_data=csv_str,
+        key=key,
+        bucket_name=TRAINING_CSV_BUCKET,
+        replace=True,
+    )
+
+    s3_uri = f"s3://{TRAINING_CSV_BUCKET}/{key}"
+    context["ti"].xcom_push(key="real_estate_dataset_s3_uri", value=s3_uri)
+    print(f"✅ real_estate_dataset.csv uploadé: {s3_uri}")
 
 def _get_jenkins_crumb(host, auth):
     try:
@@ -168,6 +238,11 @@ with DAG(
     generate_current_data = PythonOperator(
         task_id="generate_current_data_csv",
         python_callable=generate_current_data_csv,
+    )
+    
+    generate_real_estate_dataset = PythonOperator(
+        task_id="generate_real_estate_dataset_csv",
+        python_callable=generate_real_estate_dataset_csv,
     )
 
     trigger_jenkins_build = PythonOperator(
