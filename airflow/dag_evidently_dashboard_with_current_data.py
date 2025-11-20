@@ -7,6 +7,9 @@ from airflow.models import Variable
 from airflow.providers.postgres.hooks.postgres import PostgresHook
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 
+from botocore.exceptions import ClientError
+from airflow.utils.trigger_rule import TriggerRule 
+
 from datetime import datetime, timedelta
 from io import StringIO
 import requests
@@ -23,6 +26,9 @@ TRAINING_CSV_BUCKET = Variable.get("TRAINING_CSV_BUCKET")
 POSTGRES_TABLE = Variable.get("POSTGRES_TABLE", default_var="housing_prices")
 DATE_COLUMN = Variable.get("DATE_COLUMN", default_var="date_creation")
 REAL_ESTATE_API_URL = Variable.get("REAL_ESTATE_API_URL")
+
+S3_SRC_KEY = Variable.get("TRAINING_CSV_SRC_KEY", default_var="real_estate_dataset.csv")
+
 
 default_args = {
     "owner": "aurelien",
@@ -48,6 +54,43 @@ def send_failure_email(context):
         html_content=body
     )
     return send_email.execute(context=context)
+
+def move_previous_real_estate_dataset(**context):
+    """
+    Déplace le real_estate_dataset.csv actuel vers processed/ en début de DAG,
+    s'il existe déjà.
+    """
+    hook = S3Hook(aws_conn_id=AWS_CONN_ID)
+    s3 = hook.get_client_type("s3")
+
+    bucket = TRAINING_CSV_BUCKET
+    src_key = S3_SRC_KEY
+
+    # On fabrique une clé destination avec timestamp
+    ts = context["execution_date"].strftime("%Y%m%d%H%M%S")
+    base = src_key.split("/")[-1]  # real_estate_dataset.csv
+    name, ext = (base.rsplit(".", 1) + [""])[:2]
+    ext = f".{ext}" if ext else ""
+    dest_key = f"processed/previous_{name}_{ts}{ext}"
+
+    try:
+        # Vérifie si le fichier existe
+        s3.head_object(Bucket=bucket, Key=src_key)
+    except ClientError as e:
+        if e.response.get("Error", {}).get("Code") in {"NoSuchKey", "404"}:
+            print(f"[INFO] Aucun {src_key} à archiver en début de DAG (premier run ?).")
+            return
+        raise
+
+    print(f"[INFO] Archive l'ancien dataset: s3://{bucket}/{src_key} → s3://{bucket}/{dest_key}")
+    s3.copy_object(
+        Bucket=bucket,
+        CopySource={"Bucket": bucket, "Key": src_key},
+        Key=dest_key,
+        MetadataDirective="COPY",
+    )
+    s3.delete_object(Bucket=bucket, Key=src_key)
+    print(f"[INFO] Ancien fichier supprimé à la racine: s3://{bucket}/{src_key}")
 
 def generate_current_data_csv(**context):
     """
@@ -235,6 +278,12 @@ with DAG(
     on_failure_callback=send_failure_email,
 ) as dag:
 
+    move_previous_dataset = PythonOperator(
+        task_id="archive_previous_real_estate_dataset",
+        python_callable=move_previous_real_estate_dataset,
+        provide_context=True,
+    )
+
     generate_current_data = PythonOperator(
         task_id="generate_current_data_csv",
         python_callable=generate_current_data_csv,
@@ -250,4 +299,8 @@ with DAG(
         python_callable=trigger_jenkins_job,
     )
 
-    generate_current_data >> trigger_jenkins_build
+    # Orchestration :
+    # 1) on archive l'ancien dataset
+    # 2) on génère les 2 CSV
+    # 3) on lance Evidently
+    move_previous_dataset >> [generate_current_data, generate_real_estate_dataset] >> trigger_jenkins_build
