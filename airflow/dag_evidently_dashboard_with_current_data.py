@@ -28,6 +28,7 @@ DATE_COLUMN = Variable.get("DATE_COLUMN", default_var="date_creation")
 REAL_ESTATE_API_URL = Variable.get("REAL_ESTATE_API_URL")
 
 S3_SRC_KEY = Variable.get("TRAINING_CSV_SRC_KEY", default_var="real_estate_dataset.csv")
+S3_EVIDENTLY_DIR = Variable.get("S3_EVIDENTLY_DIR", default_var="evidently/")
 
 
 default_args = {
@@ -267,6 +268,7 @@ def trigger_jenkins_job(**context):
 
     return f"✔️ Build #{build_number} terminé avec succès"
 
+S3_EVIDENTLY_DIR = Variable.get("S3_EVIDENTLY_DIR", default_var="evidently/")
 
 with DAG(
     dag_id="housing_evidently_dashboard",
@@ -299,8 +301,27 @@ with DAG(
         python_callable=trigger_jenkins_job,
     )
 
-    # Orchestration :
-    # 1) on archive l'ancien dataset
-    # 2) on génère les 2 CSV
-    # 3) on lance Evidently
-    move_previous_dataset >> [generate_current_data, generate_real_estate_dataset] >> trigger_jenkins_build
+    notify_evidently_ready = EmailOperator(
+    task_id="notify_evidently_reports_ready",
+    to=Variable.get("ALERT_RECIPIENTS", default_var="aurelien.chalm@gmail.com"),
+    subject="✅ Housing – Rapports Evidently disponibles sur S3",
+    html_content=f"""
+    <p>Le DAG <b>housing_evidently_dashboard</b> s'est terminé avec succès.</p>
+
+    <p>Les rapports Evidently sont disponibles dans S3 :</p>
+    <ul>
+      <li>Bucket : <b>{TRAINING_CSV_BUCKET}</b></li>
+      <li>Dossier : <b>{S3_EVIDENTLY_DIR}</b></li>
+    </ul>
+
+    <p>Accès direct :</p>
+    <ul>
+      <li>Rapport drift : s3://{TRAINING_CSV_BUCKET}/{S3_EVIDENTLY_DIR}evidently_report.html</li>
+      <li>Tests : s3://{TRAINING_CSV_BUCKET}/{S3_EVIDENTLY_DIR}evidently_tests.html</li>
+      <li>Résumé JSON : s3://{TRAINING_CSV_BUCKET}/{S3_EVIDENTLY_DIR}drift_summary.json</li>
+    </ul>
+    """,
+    conn_id="smtp_gmail",
+    )
+
+    move_previous_dataset >> [generate_current_data, generate_real_estate_dataset] >> trigger_jenkins_build >> notify_evidently_ready

@@ -60,14 +60,17 @@ http://x.x.x.x:5000/
 ### suppression de la base MLFlow
 ```bash
 rm mlflow.db
+```
 
 ### Build de l'image Docker de la partie MLFlow en local pour executer le train.py qui utilise le endpoint train de fastapi
 ```bash
 docker build -t housing-prices-estimator ./mlflow_code 
+```
 
 ### Run du conteneur de la partie MLFlow
 ```bash
 docker run --rm --env-file .env housing-prices-estimator
+```
 
 ## 3) Jenkins sur EC2 
 
@@ -89,17 +92,21 @@ Re-uploader le .env
 ```bash
 ./start_jenkins.sh
 ./stop_jenkins.sh
+```
 
 ### Docker en local : 
 ```bash
 docker build -f test/Dockerfile.load_to_db -t test-load .
 docker run --rm --env-file .env test-load
+```
 ```bash
 docker build -f test/Dockerfile.train -t test-train .
 docker run --rm test-train
+```
 ```bash
 docker build --no-cache -t housing-prices-prediction -f test/Dockerfile.predict .
 docker run --rm housing-api-tests
+```
 
 A noter dans le Jenkinsfile.predict on utilise le Dockerfile.predictEC2 car le .env est injecté à la différence en local on utilise le Dockerfile.predict car on prend le .env à la racine du projet
 ```bash
@@ -109,16 +116,18 @@ curl -X POST http://51.44.177.253:4000/predict \
 
 docker build -f test/Dockerfile.evidently_dashboard -t evidently-dashboard-test .
 docker run --rm --env-file .env evidently-dashboard-test pytest  
-
+```
 Nettoyage du disque : 
 
+```bash
 docker system prune -a
 docker volume prune
-
+```
 puis
 
+```bash
 docker build -t myjenkins-blueocean:2.504.2-1 -f Dockerfile .
-
+```
 ## 4) Airflow sur EC2 
 
 Penser à changer dans airflow la connexion à jenkins pour avoir la nouvelle ip.
@@ -133,6 +142,8 @@ ctrl X
 
 ### FastAPI
 
+### API de prédiction
+
 projet : Un rôle IAM a été créé pour les key aws!
 pour le moment il y a un .env sur la EC2, qui ne contient rien de sensible, donc si changement d'ip il faut le modifier : 
 
@@ -144,8 +155,8 @@ Pour executer fastAPI :
 
 ```bash
 git pull origin development
-
-Modifier le .env sur le serveur.
+```
+Modifier le .env sur le serveur (MLflow serveur)
 
 
 A la racine du projet :
@@ -154,7 +165,7 @@ A la racine du projet :
 #source venv/bin/activate
 docker build --no-cache -f app/Dockerfile -t housing-api .
 docker run -it --rm -p 4000:4000 housing-api
-
+```
 
 http://x.x.x.x:4000/docs
 
@@ -164,6 +175,23 @@ ps aux | grep uvicorn
 lsof -i :4000
 
 sudo kill -9 pid du root
+```
+
+### API real time 
+
+API real time
+
+```bash
+docker build -t housing-real-api -f app_real/Dockerfile app_real
+docker rm -f housing-real-api
+docker run \
+  --env-file .env \
+  -p 8003:8003 \
+  --name housing-real-api \
+  housing-real-api
+```
+
+http://13.38.17.104:8003/docs
 
 ### Streamlit
 
@@ -172,14 +200,17 @@ http://x.x.x.x:8501
 ```bash
 docker build -f app/Dockerfile.streamlit -t est-immo-app ./app
 docker run -p 8501:8501 --env-file .env est-immo-app
+```
 
 ### Git
 
 Rappel des commandes : 
 
+```bash
 git branch
 git checkout development
 git status
 git add .
 git commit -m "xxx"
 git push
+```
