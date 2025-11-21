@@ -33,16 +33,22 @@ def send_failure_email(context):
 # ---------------- LOAD DATA JOB ----------------
 def trigger_jenkins_load_job(**context):
     conn = BaseHook.get_connection("jenkins_api")
-    username, password = conn.login, conn.password
+    username = conn.login
+    password = conn.password
 
-    crumb_resp = requests.get(f"{conn.host}/crumbIssuer/api/json", auth=(username, password))
-    crumb = crumb_resp.json()
-
+    # 1. Obtenir le crumb
+    crumb_resp = requests.get(
+        f"{conn.host}/crumbIssuer/api/json",
+        auth=(username, password)
+    )
+    crumb_resp.raise_for_status()
+    crumb_data = crumb_resp.json()
     headers = {
-        crumb["crumbRequestField"]: crumb["crumb"],
+        crumb_data["crumbRequestField"]: crumb_data["crumb"],
         "Content-Type": "application/json",
     }
 
+    # 2. Déclencher le job Jenkins test_load_to_db
     build_resp = requests.post(
         f"{conn.host}/job/test_load_to_db/build",
         auth=(username, password),
@@ -50,9 +56,50 @@ def trigger_jenkins_load_job(**context):
     )
 
     if build_resp.status_code != 201:
-        raise Exception("Erreur lancement Jenkins load_to_db")
+        raise Exception(f"❌ Erreur lors du déclenchement du job Jenkins load_to_db : {build_resp.status_code}")
 
-    print("✅ Job LOAD to DB lancé")
+    queue_url = build_resp.headers.get("Location")
+    if not queue_url:
+        raise Exception("❌ Impossible de récupérer l’URL de queue Jenkins pour test_load_to_db")
+
+    print(f"📩 Job 'test_load_to_db' envoyé en queue : {queue_url}")
+
+    # 3. Attente du build number
+    build_number = None
+    for _ in range(30):  # 30 x 2s = 60s max
+        queue_resp = requests.get(f"{queue_url}api/json", auth=(username, password))
+        queue_data = queue_resp.json()
+        if 'executable' in queue_data and 'number' in queue_data['executable']:
+            build_number = queue_data['executable']['number']
+            break
+        time.sleep(2)
+
+    if build_number is None:
+        raise Exception("❌ Timeout : Jenkins n’a pas attribué de numéro de build pour test_load_to_db")
+
+    print(f"⏳ Build Jenkins test_load_to_db #{build_number} en cours...")
+
+    # 4. Polling du statut du build
+    for _ in range(60):  # 60 x 5s = 5 min max
+        build_info_resp = requests.get(
+            f"{conn.host}/job/test_load_to_db/{build_number}/api/json",
+            auth=(username, password)
+        )
+        build_info = build_info_resp.json()
+
+        if not build_info["building"]:
+            result = build_info["result"]
+            jenkins_url = f"{conn.host}/job/test_load_to_db/{build_number}/"
+            print(f"✅ Résultat du build Jenkins load_to_db : {result}")
+            print(f"🔗 Voir le build sur Jenkins : {jenkins_url}")
+
+            if result != "SUCCESS":
+                raise Exception(f"❌ Le job Jenkins load_to_db a échoué : {result}")
+            break
+
+        time.sleep(5)
+
+    return f"✔️ Build test_load_to_db #{build_number} terminé avec succès"
 
 
 # ------------------ S3 MOVE ------------------

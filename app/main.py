@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import pandas as pd
 from datetime import datetime, timezone, timedelta
+import math
 
 app = FastAPI()
 
@@ -110,8 +111,19 @@ def get_recent_predictions(limit: int = Query(5, ge=1, le=100)):
             LIMIT :limit
         """)
         result = conn.execute(query, {"limit": limit})
-        rows = [dict(zip(result.keys(), row)) for row in result.fetchall()]
-        return rows
+        rows_raw = [dict(zip(result.keys(), row)) for row in result.fetchall()]
+
+    def sanitize_value(v):
+        if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+            return None
+        return v
+
+    rows = [
+        {k: sanitize_value(v) for k, v in row.items()}
+        for row in rows_raw
+    ]
+
+    return rows
     
 
 # 🔹 Endpoint pour récupérer les lignes depuis la db pour l'entrainement du modèle   
