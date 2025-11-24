@@ -58,6 +58,7 @@ orga :
 │   ├── test_train.py
 │   └── test_evidently_dashboard.py
 ├── README.md
+├── LDS_block_4_lead.pptx
 └── requirements.txt
 
 ## 1) Chargement de la table housing_prices dans la bdd NeonDB
