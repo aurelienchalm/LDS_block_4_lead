@@ -4,7 +4,7 @@ import pytest
 import pandas as pd
 from sklearn.pipeline import Pipeline
 
-# Ajouter le chemin vers le dossier mlflow_code (ou src si tu l'as renommé)
+# Ajouter le chemin vers le dossier mlflow_code
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'mlflow_code')))
 
 from train import (

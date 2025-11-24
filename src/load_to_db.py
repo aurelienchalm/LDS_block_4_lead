@@ -41,7 +41,7 @@ logger.addHandler(fh)
 logging.getLogger("botocore").setLevel(logging.WARNING)
 logging.getLogger("boto3").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
-logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)  # mets INFO si tu veux voir les SQL
+logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
 
 # ======================
 # Config & env
