@@ -107,6 +107,7 @@ def get_recent_predictions(limit: int = Query(5, ge=1, le=100)):
                 location_score, distance_to_center, price_predict
             FROM housing_prices
             WHERE price_predict IS NOT NULL
+            AND price_predict::text <> 'NaN'
             ORDER BY id DESC
             LIMIT :limit
         """)

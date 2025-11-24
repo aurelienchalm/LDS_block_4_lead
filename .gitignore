@@ -36,3 +36,4 @@ jenkins_home/
 *.egg-info/
 dist/
 build/
+demo/
