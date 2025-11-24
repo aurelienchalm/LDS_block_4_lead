@@ -138,7 +138,8 @@ docker run --rm --env-file .env evidently-dashboard-test pytest
 Nettoyage du disque : 
 
 ```bash
-docker system prune -a
+docker container prune
+docker image prune -a
 docker volume prune
 ```
 puis
