@@ -1,13 +1,22 @@
 # 🏠 housing-prices-prediction
 
-Application de prediction de prix de biens immobiliers à partir d'un dataset d'entrainnement récupéré depuis une API.
+Est’Immo : Est une plateforme en ligne permettant d’estimer et de consulter des annonces, de biens immobiliers. L’estimation est réalisée avec un modèle de machine learning (ML).
+Le projet projet repose sur une architecture cloud déployée sur AWS (EC2) et organisée autour de trois pipelines principaux et une interface utilisateur:
+-Pipeline de récupération de la donnée du marché et de monitoring
+-Pipeline d’entraînement et de déploiment
+-Pipeline de prédiction
+-Une application Streamlit
+
+Les pipelines sont constitués de Airflow, Jekinns(connecté à GitHub), FastAPI, MLflow, Evidently déployés dans le cloud AWS.
+
+Architecture décrite dans LDS_block_4_lead.pptx.
 
 ## 📁 Structure du projet `housing-prices-prediction`
 
 orga : 
 
 ```bash
-├── airflow
+├── airflow                         #DAGS du projet
 │   ├── Dockerfile
 │   ├── dag_housing_orchestrator.py
 │   ├── dag_load_data_evidently.py
@@ -16,40 +25,40 @@ orga :
 │   ├── dag_train_real.py
 │   ├── docker-compose.yaml
 │   └── requirements.txt
-├── app
+├── app                           #FastAPI d'entrainement, prediction
 │   ├── database.py
 │   ├── main.py
 │   ├── model_predict.py
 │   ├── Dockerfile
 │   ├── requirements.txt
-│   └── utilisateur.py
+│   └── utilisateur.py            #Streamlit
 │
-├── app_real
+├── app_real                      #FastAPI de récupération des biens immobiliers du marché                   
 │   ├── main.py
 │   ├── Dockerfile
 │   └── requirements.txt
 ├── data
 │   ├── real_estate_dataset.csv 
-├── evidently
+├── evidently                     #Monitoring du drift de la donnée
 │   └── evidently_dashboard.py
-├── jenkins
+├── jenkins                       #Jenkinsfiles
 │   ├── Jenkinsfile.evidently_dashboard
 │   ├── Jenkinsfile.load_to_db
 │   ├── Jenkinsfile.predict
 │   ├── Jenkinsfile.train
 │   └── Jenkinsfile.load_to_db
 │    
-├── mlflow_code
+├── mlflow_code                 #Code d'entrainement, tagging, MLflow
 │   ├── Dockerfile
 │   ├── MLProject
 │   ├── train.py
 │   ├── set_model_tag.py
 │   └── requirements.txt
-├── notebooks
+├── notebooks                   #Notebook d'entrainement initial du modèle
 │   └── housing_prices_eda.ipynb
-├── src
+├── src                         #Insertion en BDD (NeonDB)
 │   └── load_to_db.py
-├── test
+├── test                        #Code des tests Jenkins
 │   ├── Dockerfile.load_to_db
 │   ├── Dockerfile.train
 │   ├── Dockerfile.predict
@@ -58,7 +67,7 @@ orga :
 │   ├── test_train.py
 │   └── test_evidently_dashboard.py
 ├── README.md
-├── LDS_block_4_lead.pptx
+├── LDS_block_4_lead.pptx       #Presentation du projet
 └── requirements.txt
 
 ## 1) Chargement de la table housing_prices dans la bdd NeonDB
