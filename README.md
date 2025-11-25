@@ -181,7 +181,7 @@ ctrl X
 projet : Un rôle IAM a été créé pour les key aws!
 pour le moment il y a un .env sur la EC2, qui ne contient rien de sensible, donc si changement d'ip il faut le modifier : 
 
-POSTGRES_DATABASE=postgresql://neondb_owner:npg_x1bn2gueoPdE@ep-bold-firefly-a2mucnl4-pooler.eu-central-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require
+POSTGRES_DATABASE=postgresql://neondb_owner:xxxxxx@ep-bold-firefly-a2mucnl4-pooler.eu-central-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require
 MLFLOW_TRACKING_URI=http://xxxxxx:5000/
 API_HOST=http://xxxxxx:4000
 
