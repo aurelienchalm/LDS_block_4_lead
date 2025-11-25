@@ -5,7 +5,7 @@ Le projet projet repose sur une architecture cloud déployée sur AWS (EC2) et o
 
 -Pipeline de récupération de la donnée du marché et de monitoring
 
--Pipeline d’entraînement et de déploiment
+-Pipeline d’entraînement et de déploiement
 
 -Pipeline de prédiction
 
