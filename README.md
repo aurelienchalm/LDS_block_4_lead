@@ -2,10 +2,15 @@
 
 Est’Immo : Est une plateforme en ligne permettant d’estimer et de consulter des annonces, de biens immobiliers. L’estimation est réalisée avec un modèle de machine learning (ML).
 Le projet projet repose sur une architecture cloud déployée sur AWS (EC2) et organisée autour de trois pipelines principaux et une interface utilisateur:
+
 -Pipeline de récupération de la donnée du marché et de monitoring
+
 -Pipeline d’entraînement et de déploiment
+
 -Pipeline de prédiction
+
 -Une application Streamlit
+
 
 Les pipelines sont constitués de Airflow, Jekinns(connecté à GitHub), FastAPI, MLflow, Evidently déployés dans le cloud AWS.
 
